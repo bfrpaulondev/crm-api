@@ -23,19 +23,19 @@ import {
   shutdownOpenTelemetry,
 } from './infrastructure/otel/index.js';
 import { logger } from './infrastructure/logging/index.js';
-import { builder } from './graphql/schema/builder.js';
+import { builder } from './gql/schema/builder.js';
 import { GraphQLContext } from './types/context.js';
 import { Permission, ROLE_PERMISSIONS } from './types/context.js';
 import * as path from 'path';
 import { GraphQLError, GraphQLFormattedError } from 'graphql';
 
 // Import resolvers
-import './graphql/resolvers/index.js';
-import './graphql/resolvers/mutations.js';
-import './graphql/resolvers/reporting-resolvers.js';
-import './graphql/resolvers/auth-resolvers.js';
-import './graphql/resolvers/bulk-resolvers.js';
-import './graphql/resolvers/upload-resolvers.js';
+import './gql/resolvers/index.js';
+import './gql/resolvers/mutations.js';
+import './gql/resolvers/reporting-resolvers.js';
+import './gql/resolvers/auth-resolvers.js';
+import './gql/resolvers/bulk-resolvers.js';
+import './gql/resolvers/upload-resolvers.js';
 
 // =============================================================================
 // Build GraphQL Schema
@@ -205,7 +205,7 @@ async function setupGraphQL() {
     handler: fastifyApolloHandler(apolloServer, {
       context: async (request) => {
         const { buildContext } = await import('./middlewares/auth.middleware.js');
-        const { createDataLoaders } = await import('./graphql/dataloaders.js');
+        const { createDataLoaders } = await import('./gql/dataloaders.js');
         
         const baseContext = await buildContext({
           headers: request.headers as Record<string, string | undefined>,
