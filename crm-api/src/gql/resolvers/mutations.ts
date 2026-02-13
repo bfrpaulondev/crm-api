@@ -4,22 +4,12 @@
 
 import { builder } from '../schema/builder.js';
 import { leadService } from '@/services/lead.service.js';
-import { userService } from '@/services/user.service.js';
 import { webhookService } from '@/services/webhook.service.js';
 import { GraphQLContext } from '@/types/context.js';
 
 // =============================================================================
 // Result Types
 // =============================================================================
-
-const LoginResult = builder.simpleObject('LoginResult', {
-  fields: (t) => ({
-    accessToken: t.string({ nullable: false }),
-    refreshToken: t.string({ nullable: false }),
-    userId: t.string({ nullable: false }),
-    email: t.string({ nullable: false }),
-  }),
-});
 
 const CreateLeadResult = builder.simpleObject('CreateLeadResult', {
   fields: (t) => ({
@@ -59,27 +49,6 @@ const WebhookResult = builder.simpleObject('WebhookResult', {
 // =============================================================================
 
 builder.mutationFields((t) => ({
-  login: t.field({
-    type: LoginResult,
-    args: {
-      email: t.arg.string({ required: true }),
-      password: t.arg.string({ required: true }),
-      tenantId: t.arg.string({ required: true }),
-    },
-    resolve: async (_root, args, ctx: GraphQLContext) => {
-      const result = await userService.login(
-        { email: args.email, password: args.password, tenantId: args.tenantId },
-        ctx.requestId
-      );
-      return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        userId: result.user._id.toHexString(),
-        email: result.user.email,
-      };
-    },
-  }),
-
   createLead: t.field({
     type: CreateLeadResult,
     args: {
