@@ -17,6 +17,7 @@ services:
     region: oregon
     plan: free
     branch: main
+    rootDir: crm-api
     buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /health
