@@ -121,37 +121,10 @@ StageType.implement({
 });
 
 // =============================================================================
-// Simple Types
-// =============================================================================
-
-const MeType = builder.simpleObject('Me', {
-  fields: (t) => ({
-    id: t.string({ nullable: false }),
-    email: t.string({ nullable: false }),
-    role: t.string({ nullable: false }),
-    tenantId: t.string({ nullable: false }),
-  }),
-});
-
-// =============================================================================
 // Query Fields
 // =============================================================================
 
 builder.queryFields((t) => ({
-  me: t.field({
-    type: MeType,
-    nullable: true,
-    resolve: (_root, _args, ctx: GraphQLContext) => {
-      if (!ctx.user) return null;
-      return {
-        id: ctx.user.id,
-        email: ctx.user.email,
-        role: ctx.user.role,
-        tenantId: ctx.user.tenantId,
-      };
-    },
-  }),
-
   lead: t.field({
     type: LeadType,
     nullable: true,
@@ -255,4 +228,4 @@ builder.queryFields((t) => ({
   }),
 }));
 
-export { LeadType, AccountType, ContactType, OpportunityType, StageType, MeType };
+export { LeadType, AccountType, ContactType, OpportunityType, StageType };
