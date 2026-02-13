@@ -95,15 +95,14 @@ async function upstashCommand<T = unknown>(command: string[]): Promise<T | null>
   }
 
   try {
-    // Upstash REST API format: POST https://<endpoint>/<command>
-    // Body: array of arguments
-    const response = await fetch(`${upstashConfig.url}/${command[0]}`, {
-      method: 'POST',
+    // Upstash REST API format: GET https://<endpoint>/<command>/<arg1>/<arg2>/...
+    // For commands with arguments, use the command and args in URL path
+    const cmdPath = command.map(encodeURIComponent).join('/');
+    const response = await fetch(`${upstashConfig.url}/${cmdPath}`, {
+      method: 'GET',
       headers: {
         'Authorization': `Bearer ${upstashConfig.token}`,
-        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(command.slice(1)),
     });
 
     if (!response.ok) {
