@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery, useMutation } from '@apollo/client';
+import { useQuery, useMutation } from '@apollo/client/react/hooks';
 import { GET_PIPELINE, GET_OPPORTUNITIES } from '@/graphql/queries/leads';
 import { CREATE_OPPORTUNITY_MUTATION } from '@/graphql/mutations/leads';
 import { PipelineBoard } from '@/components/dashboard/pipeline-board';

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useQuery } from '@apollo/client';
+import { useQuery } from '@apollo/client/react/hooks';
 import { GET_LEADS } from '@/graphql/queries/leads';
 import { LeadForm } from '@/components/forms/lead-form';
 import { Button } from '@/components/ui/button';

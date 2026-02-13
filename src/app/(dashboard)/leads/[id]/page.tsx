@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery, useMutation } from '@apollo/client';
+import { useQuery, useMutation } from '@apollo/client/react/hooks';
 import { useParams, useRouter } from 'next/navigation';
 import { GET_LEAD } from '@/graphql/queries/leads';
 import {

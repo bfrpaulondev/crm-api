@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useMutation } from '@apollo/client';
+import { useMutation } from '@apollo/client/react/hooks';
 import { UPDATE_OPPORTUNITY_STAGE_MUTATION } from '@/graphql/mutations/leads';
 import { GET_PIPELINE } from '@/graphql/queries/leads';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
