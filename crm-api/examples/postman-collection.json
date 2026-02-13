@@ -1,0 +1,368 @@
+{
+  "info": {
+    "name": "CRM Pipeline API",
+    "description": "Complete GraphQL API for CRM + Pipeline management",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "api_url",
+      "value": "http://localhost:4000/graphql",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tenant_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Register($input: RegisterInput!) {\n  register(input: $input) {\n    accessToken\n    refreshToken\n    user {\n      id\n      email\n      firstName\n      lastName\n      role\n    }\n    tenant {\n      id\n      name\n      slug\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"email\": \"admin@example.com\",\n    \"password\": \"SecurePass123!\",\n    \"firstName\": \"Admin\",\n    \"lastName\": \"User\",\n    \"tenantName\": \"My Company\",\n    \"tenantSlug\": \"my-company\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{api_url}}",
+              "host": ["{{api_url}}"]
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "if (response.data?.login) {",
+                  "    pm.collectionVariables.set('access_token', response.data.login.accessToken);",
+                  "    pm.collectionVariables.set('refresh_token', response.data.login.refreshToken);",
+                  "    pm.collectionVariables.set('tenant_id', response.data.login.tenant.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Login($input: LoginInput!) {\n  login(input: $input) {\n    accessToken\n    refreshToken\n    user {\n      id\n      email\n      firstName\n      lastName\n      role\n    }\n    tenant {\n      id\n      name\n      slug\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"email\": \"admin@example.com\",\n    \"password\": \"SecurePass123!\",\n    \"tenantId\": \"your-tenant-id\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{api_url}}",
+              "host": ["{{api_url}}"]
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation RefreshToken($input: RefreshTokenInput!) {\n  refreshToken(input: $input) {\n    accessToken\n    refreshToken\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"refreshToken\": \"{{refresh_token}}\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{api_url}}",
+              "host": ["{{api_url}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Leads",
+      "item": [
+        {
+          "name": "Create Lead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation CreateLead($input: CreateLeadInput!) {\n  createLead(input: $input) {\n    success\n    message\n    lead {\n      id\n      firstName\n      lastName\n      email\n      status\n      score\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"firstName\": \"John\",\n    \"lastName\": \"Doe\",\n    \"email\": \"john.doe@example.com\",\n    \"phone\": \"+1-555-123-4567\",\n    \"companyName\": \"Acme Corp\",\n    \"title\": \"CEO\",\n    \"source\": \"WEBSITE\",\n    \"tags\": [\"enterprise\", \"priority\"]\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{api_url}}",
+              "host": ["{{api_url}}"]
+            }
+          }
+        },
+        {
+          "name": "List Leads",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Leads($filter: LeadFilterInput, $first: Int) {\n  leads(filter: $filter, first: $first) {\n    edges {\n      node {\n        id\n        firstName\n        lastName\n        email\n        status\n        score\n        companyName\n      }\n      cursor\n    }\n    pageInfo {\n      hasNextPage\n      totalCount\n    }\n  }\n}",
+                "variables": "{\n  \"filter\": {\n    \"status\": \"NEW\"\n  },\n  \"first\": 20\n}"
+              }
+            },
+            "url": {
+              "raw": "{{api_url}}",
+              "host": ["{{api_url}}"]
+            }
+          }
+        },
+        {
+          "name": "Qualify Lead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation QualifyLead($input: QualifyLeadInput!) {\n  qualifyLead(input: $input) {\n    success\n    message\n    lead {\n      id\n      status\n      qualifiedAt\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"leadId\": \"lead-id-here\",\n    \"notes\": \"Budget confirmed, decision maker identified\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{api_url}}",
+              "host": ["{{api_url}}"]
+            }
+          }
+        },
+        {
+          "name": "Convert Lead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation ConvertLead($input: ConvertLeadInput!) {\n  convertLead(input: $input) {\n    success\n    message\n    lead {\n      id\n      status\n      convertedAt\n      convertedToAccountId\n      convertedToContactId\n      convertedToOpportunityId\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"leadId\": \"lead-id-here\",\n    \"createAccount\": true,\n    \"createOpportunity\": true,\n    \"opportunityAmount\": 50000,\n    \"idempotencyKey\": \"convert-lead-123\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{api_url}}",
+              "host": ["{{api_url}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Opportunities",
+      "item": [
+        {
+          "name": "List Opportunities",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Opportunities($filter: OpportunityFilterInput) {\n  opportunities(filter: $filter) {\n    edges {\n      node {\n        id\n        name\n        amount\n        status\n        probability\n        stage {\n          id\n          name\n          color\n        }\n        expectedCloseDate\n      }\n    }\n    pageInfo {\n      totalCount\n    }\n  }\n}",
+                "variables": "{\n  \"filter\": {\n    \"status\": \"OPEN\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{api_url}}",
+              "host": ["{{api_url}}"]
+            }
+          }
+        },
+        {
+          "name": "Close Opportunity (WON)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation CloseOpportunity($input: CloseOpportunityInput!) {\n  closeOpportunity(input: $input) {\n    success\n    message\n    opportunity {\n      id\n      status\n      actualCloseDate\n    }\n    dealId\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"opportunityId\": \"opportunity-id\",\n    \"status\": \"WON\",\n    \"reason\": \"Contract signed\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{api_url}}",
+              "host": ["{{api_url}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analytics",
+      "item": [
+        {
+          "name": "Dashboard Stats",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query DashboardStats {\n  dashboardStats {\n    leads {\n      total\n      new\n      qualified\n      converted\n    }\n    opportunities {\n      total\n      open\n      won\n      lost\n      pipelineValue\n    }\n    activities {\n      total\n      pending\n      completed\n      overdue\n    }\n    revenue {\n      totalWon\n      thisMonth\n      forecasted\n    }\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{api_url}}",
+              "host": ["{{api_url}}"]
+            }
+          }
+        },
+        {
+          "name": "Pipeline Analytics",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query PipelineAnalytics($dateRange: DateRangeInput) {\n  pipelineAnalytics(dateRange: $dateRange) {\n    totalOpen\n    totalValue\n    weightedValue\n    byStage {\n      stageId\n      stageName\n      count\n      value\n      probability\n    }\n    conversionRate\n    avgDealSize\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{api_url}}",
+              "host": ["{{api_url}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_url}}/../health",
+              "host": ["{{api_url}}", "..", "health"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,647 @@
+# =============================================================================
+# CRM Pipeline API - GraphQL Operations
+# =============================================================================
+
+# =============================================================================
+# QUERIES
+# =============================================================================
+
+# Current user info
+query Me {
+  me {
+    id
+    email
+    firstName
+    lastName
+    role
+    tenantId
+  }
+}
+
+# Get single lead
+query Lead($id: String!) {
+  lead(id: $id) {
+    id
+    firstName
+    lastName
+    fullName
+    email
+    phone
+    companyName
+    title
+    website
+    industry
+    status
+    source
+    score
+    tags
+    notes
+    isQualified
+    isConverted
+    qualifiedAt
+    convertedAt
+    createdAt
+    updatedAt
+  }
+}
+
+# List leads with pagination and filtering
+query Leads(
+  $filter: LeadFilterInput
+  $first: Int
+  $after: String
+) {
+  leads(filter: $filter, first: $first, after: $after) {
+    edges {
+      node {
+        id
+        firstName
+        lastName
+        email
+        companyName
+        status
+        source
+        score
+        tags
+        createdAt
+      }
+      cursor
+    }
+    pageInfo {
+      hasNextPage
+      hasPreviousPage
+      startCursor
+      endCursor
+      totalCount
+    }
+  }
+}
+
+# Get single account
+query Account($id: String!) {
+  account(id: $id) {
+    id
+    name
+    domain
+    website
+    industry
+    type
+    tier
+    status
+    employees
+    annualRevenue
+    phone
+    billingAddress {
+      street
+      city
+      state
+      postalCode
+      country
+    }
+    shippingAddress {
+      street
+      city
+      state
+      postalCode
+      country
+    }
+    createdAt
+    updatedAt
+  }
+}
+
+# List accounts
+query Accounts(
+  $filter: AccountFilterInput
+  $first: Int
+  $after: String
+) {
+  accounts(filter: $filter, first: $first, after: $after) {
+    edges {
+      node {
+        id
+        name
+        domain
+        type
+        tier
+        industry
+        status
+        createdAt
+      }
+      cursor
+    }
+    pageInfo {
+      hasNextPage
+      hasPreviousPage
+      startCursor
+      endCursor
+      totalCount
+    }
+  }
+}
+
+# Get single contact
+query Contact($id: String!) {
+  contact(id: $id) {
+    id
+    firstName
+    lastName
+    fullName
+    email
+    phone
+    mobile
+    title
+    department
+    linkedinUrl
+    isPrimary
+    isDecisionMaker
+    accountId
+    ownerId
+    createdAt
+    updatedAt
+  }
+}
+
+# List contacts
+query Contacts(
+  $filter: ContactFilterInput
+  $first: Int
+  $after: String
+) {
+  contacts(filter: $filter, first: $first, after: $after) {
+    edges {
+      node {
+        id
+        firstName
+        lastName
+        email
+        title
+        isPrimary
+        isDecisionMaker
+        accountId
+      }
+      cursor
+    }
+    pageInfo {
+      hasNextPage
+      totalCount
+    }
+  }
+}
+
+# Get single opportunity
+query Opportunity($id: String!) {
+  opportunity(id: $id) {
+    id
+    name
+    description
+    amount
+    formattedAmount
+    currency
+    probability
+    weightedAmount
+    status
+    stageId
+    stage {
+      id
+      name
+      probability
+      color
+      isWonStage
+      isLostStage
+    }
+    expectedCloseDate
+    actualCloseDate
+    accountId
+    contactId
+    ownerId
+    type
+    leadSource
+    nextStep
+    isOpen
+    isWon
+    isLost
+    createdAt
+    updatedAt
+  }
+}
+
+# List opportunities
+query Opportunities(
+  $filter: OpportunityFilterInput
+  $first: Int
+  $after: String
+) {
+  opportunities(filter: $filter, first: $first, after: $after) {
+    edges {
+      node {
+        id
+        name
+        amount
+        currency
+        probability
+        status
+        stageId
+        expectedCloseDate
+        accountId
+        ownerId
+      }
+      cursor
+    }
+    pageInfo {
+      hasNextPage
+      totalCount
+    }
+  }
+}
+
+# Get all stages (pipeline configuration)
+query Stages {
+  stages {
+    id
+    name
+    order
+    probability
+    isWonStage
+    isLostStage
+    isActive
+    color
+    description
+  }
+}
+
+# Get pipeline summary (open opportunities grouped by stage)
+query PipelineSummary {
+  opportunities(filter: { status: OPEN }) {
+    edges {
+      node {
+        id
+        name
+        amount
+        weightedAmount
+        probability
+        expectedCloseDate
+        stage {
+          id
+          name
+          color
+        }
+        account {
+          id
+          name
+          tier
+        }
+      }
+    }
+    pageInfo {
+      totalCount
+    }
+  }
+}
+
+# =============================================================================
+# MUTATIONS
+# =============================================================================
+
+# Create a new lead
+mutation CreateLead($input: CreateLeadInput!) {
+  createLead(input: $input) {
+    success
+    message
+    lead {
+      id
+      firstName
+      lastName
+      email
+      status
+      score
+      tags
+    }
+  }
+}
+
+# Update a lead
+mutation UpdateLead($id: String!, $input: UpdateLeadInput!) {
+  updateLead(id: $id, input: $input) {
+    success
+    message
+    lead {
+      id
+      firstName
+      lastName
+      email
+      status
+      score
+    }
+  }
+}
+
+# Delete a lead (soft delete)
+mutation DeleteLead($id: String!) {
+  deleteLead(id: $id)
+}
+
+# Qualify a lead
+mutation QualifyLead($input: QualifyLeadInput!) {
+  qualifyLead(input: $input) {
+    success
+    message
+    lead {
+      id
+      status
+      qualifiedAt
+    }
+  }
+}
+
+# Convert lead to contact + account + opportunity
+mutation ConvertLead($input: ConvertLeadInput!) {
+  convertLead(input: $input) {
+    success
+    message
+    lead {
+      id
+      status
+      convertedAt
+      convertedToAccountId
+      convertedToContactId
+      convertedToOpportunityId
+    }
+  }
+}
+
+# Create account
+mutation CreateAccount($input: CreateAccountInput!) {
+  createAccount(input: $input) {
+    success
+    message
+    account {
+      id
+      name
+      type
+      tier
+      status
+    }
+  }
+}
+
+# Update account
+mutation UpdateAccount($id: String!, $input: UpdateAccountInput!) {
+  updateAccount(id: $id, input: $input) {
+    success
+    message
+    account {
+      id
+      name
+      type
+      tier
+      status
+    }
+  }
+}
+
+# Create contact
+mutation CreateContact($input: CreateContactInput!) {
+  createContact(input: $input) {
+    success
+    message
+    contact {
+      id
+      firstName
+      lastName
+      email
+      isPrimary
+      isDecisionMaker
+    }
+  }
+}
+
+# Update contact
+mutation UpdateContact($id: String!, $input: UpdateContactInput!) {
+  updateContact(id: $id, input: $input) {
+    success
+    message
+    contact {
+      id
+      firstName
+      lastName
+      email
+    }
+  }
+}
+
+# Create opportunity
+mutation CreateOpportunity($input: CreateOpportunityInput!) {
+  createOpportunity(input: $input) {
+    success
+    message
+    opportunity {
+      id
+      name
+      amount
+      currency
+      status
+      stageId
+      probability
+    }
+  }
+}
+
+# Update opportunity
+mutation UpdateOpportunity($id: String!, $input: UpdateOpportunityInput!) {
+  updateOpportunity(id: $id, input: $input) {
+    success
+    message
+    opportunity {
+      id
+      name
+      amount
+      probability
+      expectedCloseDate
+      nextStep
+    }
+  }
+}
+
+# Move opportunity to different stage
+mutation MoveOpportunityStage($input: MoveOpportunityStageInput!) {
+  moveOpportunityStage(input: $input) {
+    success
+    message
+    opportunity {
+      id
+      stageId
+      probability
+      stage {
+        id
+        name
+      }
+    }
+  }
+}
+
+# Close opportunity (WON or LOST)
+mutation CloseOpportunity($input: CloseOpportunityInput!) {
+  closeOpportunity(input: $input) {
+    success
+    message
+    opportunity {
+      id
+      status
+      actualCloseDate
+    }
+    dealId
+  }
+}
+
+# Create stage
+mutation CreateStage($input: CreateStageInput!) {
+  createStage(input: $input) {
+    success
+    message
+    stage {
+      id
+      name
+      order
+      probability
+      isWonStage
+      isLostStage
+      color
+    }
+  }
+}
+
+# Update stage
+mutation UpdateStage($id: String!, $input: UpdateStageInput!) {
+  updateStage(id: $id, input: $input) {
+    success
+    message
+    stage {
+      id
+      name
+      order
+      probability
+      isActive
+    }
+  }
+}
+
+# Create activity (call, email, meeting, task)
+mutation CreateActivity($input: CreateActivityInput!) {
+  createActivity(input: $input) {
+    success
+    message
+    activity {
+      id
+      type
+      subject
+      status
+      priority
+      dueDate
+      location
+      durationMinutes
+    }
+  }
+}
+
+# Update activity
+mutation UpdateActivity($id: String!, $input: UpdateActivityInput!) {
+  updateActivity(id: $id, input: $input) {
+    success
+    message
+    activity {
+      id
+      subject
+      status
+      completedAt
+      outcome
+    }
+  }
+}
+
+# Complete activity
+mutation CompleteActivity($input: CompleteActivityInput!) {
+  completeActivity(input: $input) {
+    success
+    message
+    activity {
+      id
+      status
+      completedAt
+      outcome
+    }
+  }
+}
+
+# Create note
+mutation CreateNote($input: CreateNoteInput!) {
+  createNote(input: $input) {
+    success
+    message
+    note {
+      id
+      body
+      visibility
+      createdAt
+    }
+  }
+}
+
+# =============================================================================
+# VARIABLES EXAMPLES
+# =============================================================================
+
+# Variables for CreateLead
+# {
+#   "input": {
+#     "firstName": "John",
+#     "lastName": "Doe",
+#     "email": "john.doe@example.com",
+#     "phone": "+1-555-123-4567",
+#     "companyName": "Acme Corp",
+#     "title": "CTO",
+#     "website": "https://acme.com",
+#     "industry": "Technology",
+#     "source": "WEBSITE",
+#     "tags": ["enterprise", "priority"],
+#     "notes": "Met at TechConf"
+#   }
+# }
+
+# Variables for Leads filter
+# {
+#   "filter": {
+#     "status": "NEW",
+#     "search": "john",
+#     "minScore": 50,
+#     "tags": ["enterprise"],
+#     "createdAfter": "2024-01-01T00:00:00Z"
+#   },
+#   "first": 20,
+#   "after": null
+# }
+
+# Variables for ConvertLead
+# {
+#   "input": {
+#     "leadId": "507f1f77bcf86cd799439011",
+#     "createAccount": true,
+#     "accountName": "Acme Corp",
+#     "createOpportunity": true,
+#     "opportunityName": "Acme Corp - Enterprise License",
+#     "opportunityAmount": 50000,
+#     "stageId": "507f1f77bcf86cd799439012",
+#     "idempotencyKey": "convert-507f1f77-2024"
+#   }
+# }
+
+# Variables for CloseOpportunity
+# {
+#   "input": {
+#     "opportunityId": "507f1f77bcf86cd799439011",
+#     "status": "WON",
+#     "reason": "Contract signed",
+#     "actualCloseDate": "2024-01-30",
+#     "idempotencyKey": "close-won-507f1f77"
+#   }
+# }

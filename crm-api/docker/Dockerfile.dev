@@ -1,0 +1,25 @@
+# =============================================================================
+# Development Dockerfile
+# =============================================================================
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Instalar dependências do sistema
+RUN apk add --no-cache openssl
+
+# Copiar arquivos de dependências
+COPY package*.json ./
+COPY tsconfig.json ./
+
+# Instalar dependências do Node
+RUN npm install
+
+# Copiar código fonte
+COPY src ./src
+
+# Expor porta
+EXPOSE 4000
+
+# Comando de desenvolvimento com hot reload
+CMD ["npm", "run", "dev"]

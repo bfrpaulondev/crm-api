@@ -1,0 +1,9 @@
+# Redis Dockerfile for Render
+FROM redis:7.2-alpine
+
+# Configure Redis for limited memory
+CMD ["redis-server", \
+     "--maxmemory", "50mb", \
+     "--maxmemory-policy", "allkeys-lru", \
+     "--appendonly", "yes", \
+     "--save", "60", "1000"]

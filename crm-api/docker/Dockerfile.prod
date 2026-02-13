@@ -1,0 +1,51 @@
+# =============================================================================
+# Production Dockerfile - Multi-stage build
+# =============================================================================
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copiar arquivos de dependências
+COPY package*.json ./
+COPY tsconfig.json ./
+
+# Instalar apenas dependências de produção + build
+RUN npm ci
+
+# Copiar código fonte
+COPY src ./src
+
+# Build do TypeScript
+RUN npm run build
+
+# Estágio de produção
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+# Criar usuário não-root
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 api
+
+# Copiar dependências de produção
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
+
+# Copiar build
+COPY --from=builder /app/dist ./dist
+
+# Definir ownership
+RUN chown -R api:nodejs /app
+
+# Mudar para usuário não-root
+USER api
+
+# Expor porta
+EXPOSE 4000
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:4000/health || exit 1
+
+# Comando de produção
+CMD ["node", "dist/index.js"]
