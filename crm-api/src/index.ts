@@ -235,13 +235,6 @@ async function setupGraphQL() {
           headers: request.headers as Record<string, string | undefined>,
         });
 
-        logger.info('GraphQL context built', {
-          isAuthenticated: baseContext.isAuthenticated,
-          hasUser: !!baseContext.user,
-          userId: baseContext.user?.id,
-          tenantId: baseContext.tenant?.id,
-        });
-
         const loaders = baseContext.tenant
           ? createDataLoaders(baseContext.tenant.id)
           : null;
