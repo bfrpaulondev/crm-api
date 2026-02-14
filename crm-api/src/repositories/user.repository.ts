@@ -9,6 +9,10 @@ import { Filter, ObjectId } from 'mongodb';
 export class UserRepository extends BaseRepository<User> {
   protected collectionName = 'users';
 
+  async getById(id: string, tenantId: string): Promise<User | null> {
+    return this.findById(id, tenantId);
+  }
+
   async findByEmail(email: string, tenantId: string): Promise<User | null> {
     return this.findOne({ email: email.toLowerCase() } as Filter<User>, tenantId);
   }
