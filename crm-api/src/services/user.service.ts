@@ -1,5 +1,5 @@
 // =============================================================================
-// User Service
+// User Service - Using MongoDB for persistence
 // =============================================================================
 
 import { logger } from '@/infrastructure/logging/index.js';
@@ -9,7 +9,10 @@ import * as jwt from 'jsonwebtoken';
 import { config } from '@/config/index.js';
 import { auditLogRepository } from '@/repositories/audit-log.repository.js';
 import { stageRepository } from '@/repositories/stage.repository.js';
+import { userRepository } from '@/repositories/user.repository.js';
+import { tenantRepository } from '@/repositories/tenant.repository.js';
 import { UserRole } from '@/types/entities.js';
+import { ObjectId } from 'mongodb';
 
 const SALT_ROUNDS = 12;
 
@@ -22,30 +25,6 @@ const DEFAULT_STAGES = [
   { name: 'Closed Won', order: 5, probability: 100, isWonStage: true, isLostStage: false, color: '#27ae60', description: 'Deal closed successfully' },
   { name: 'Closed Lost', order: 6, probability: 0, isWonStage: false, isLostStage: true, color: '#e74c3c', description: 'Deal lost' },
 ];
-
-interface User {
-  _id: { toHexString: () => string };
-  tenantId: string;
-  email: string;
-  passwordHash: string;
-  firstName: string;
-  lastName: string;
-  role: UserRole;
-  isActive: boolean;
-  lastLoginAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-interface Tenant {
-  _id: { toHexString: () => string };
-  name: string;
-  slug: string;
-  plan: string;
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
 
 interface CreateUserData {
   tenantId: string;
@@ -68,8 +47,8 @@ interface RegisterData {
 interface AuthResult {
   accessToken: string;
   refreshToken: string;
-  user: User;
-  tenant: Tenant;
+  user: any;
+  tenant: any;
 }
 
 interface LoginData {
@@ -78,48 +57,56 @@ interface LoginData {
   tenantId: string;
 }
 
-// Simple in-memory stores (replace with database in production)
-const users = new Map<string, User>();
-const tenants = new Map<string, Tenant>();
-const refreshTokens = new Map<string, { userId: string; expiresAt: Date }>();
+// In-memory stores for refresh tokens (can be moved to Redis later)
+const refreshTokens = new Map<string, { userId: string; tenantId: string; expiresAt: Date }>();
 const passwordResetTokens = new Map<string, { email: string; tenantId: string; expiresAt: Date }>();
 
 export class UserService {
   async register(data: RegisterData, requestId: string): Promise<AuthResult> {
     return traceServiceOperation('UserService', 'register', async () => {
       // Check if tenant slug already exists
-      const existingTenant = Array.from(tenants.values()).find(t => t.slug === data.tenantSlug);
+      const existingTenant = await tenantRepository.findBySlug(data.tenantSlug);
       if (existingTenant) {
         throw new Error('Tenant with this slug already exists');
       }
 
-      // Check if user already exists
-      const existingUser = Array.from(users.values()).find(u => u.email === data.email);
+      // Check if user already exists globally
+      const existingUser = await userRepository.findByEmailGlobally(data.email);
       if (existingUser) {
         throw new Error('User with this email already exists');
       }
 
       // Create tenant
-      const tenantId = crypto.randomUUID();
-      const tenant: Tenant = {
-        _id: { toHexString: () => tenantId },
+      const tenant = await tenantRepository.create({
         name: data.tenantName,
         slug: data.tenantSlug.toLowerCase(),
-        plan: 'free',
+        plan: 'FREE',
         isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      tenants.set(tenantId, tenant);
+        settings: {
+          defaultCurrency: 'USD',
+          fiscalYearStart: 1,
+          dateFormat: 'YYYY-MM-DD',
+          timezone: 'UTC',
+          features: {
+            customStages: true,
+            advancedReporting: false,
+            apiAccess: true,
+            ssoEnabled: false,
+            maxUsers: 10,
+            maxRecords: 10000,
+          },
+        },
+        deletedAt: null,
+      } as any);
+
+      const tenantId = tenant._id.toHexString();
 
       // Create default stages for the new tenant
       await this.createDefaultStages(tenantId);
 
       // Create admin user
-      const userId = crypto.randomUUID();
       const passwordHash = await bcrypt.hash(data.password, SALT_ROUNDS);
-      const user: User = {
-        _id: { toHexString: () => userId },
+      const user = await userRepository.create({
         tenantId,
         email: data.email.toLowerCase(),
         passwordHash,
@@ -128,10 +115,15 @@ export class UserService {
         role: UserRole.ADMIN,
         isActive: true,
         lastLoginAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      users.set(userId, user);
+        preferences: {
+          timezone: 'UTC',
+          language: 'en',
+          emailNotifications: true,
+        },
+        deletedAt: null,
+      } as any);
+
+      const userId = user._id.toHexString();
 
       // Generate tokens
       const accessToken = jwt.sign(
@@ -146,11 +138,14 @@ export class UserService {
         { expiresIn: '7d' }
       );
 
+      // Store refresh token
+      refreshTokens.set(refreshToken, { userId, tenantId, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) });
+
       await auditLogRepository.log({
         tenantId,
         entityType: 'User',
         entityId: userId,
-        action: 'CREATE',
+        action: 'CREATE' as any,
         actorId: userId,
         actorEmail: user.email,
         changes: { created: { email: user.email, firstName: user.firstName, lastName: user.lastName } },
@@ -160,15 +155,32 @@ export class UserService {
 
       logger.info('User registered', { userId, email: user.email, tenantId, requestId });
 
-      return { accessToken, refreshToken, user, tenant };
+      return {
+        accessToken,
+        refreshToken,
+        user: {
+          _id: user._id,
+          tenantId: user.tenantId,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+          toHexString: () => userId,
+        },
+        tenant: {
+          _id: tenant._id,
+          name: tenant.name,
+          slug: tenant.slug,
+          plan: tenant.plan,
+          toHexString: () => tenantId,
+        },
+      };
     });
   }
 
   async login(data: LoginData, requestId: string): Promise<AuthResult> {
     return traceServiceOperation('UserService', 'login', async () => {
-      const user = Array.from(users.values()).find(
-        u => u.email === data.email.toLowerCase() && u.tenantId === data.tenantId
-      );
+      const user = await userRepository.findByEmail(data.email, data.tenantId);
 
       if (!user || !user.isActive) {
         throw new Error('Invalid credentials');
@@ -180,55 +192,67 @@ export class UserService {
       }
 
       // Get tenant
-      const tenant = tenants.get(user.tenantId);
+      const tenant = await tenantRepository.findByIdGlobally(data.tenantId);
       if (!tenant || !tenant.isActive) {
         throw new Error('Tenant not found or inactive');
       }
 
       // Update last login
-      user.lastLoginAt = new Date();
+      await userRepository.updateLastLogin(user._id.toHexString(), data.tenantId);
+
+      const userId = user._id.toHexString();
+      const tenantId = tenant._id.toHexString();
 
       // Generate tokens
       const accessToken = jwt.sign(
-        {
-          userId: user._id.toHexString(),
-          tenantId: user.tenantId,
-          email: user.email,
-          role: user.role,
-        },
+        { userId, tenantId, email: user.email, role: user.role },
         config.JWT_SECRET,
         { expiresIn: '15m' }
       );
 
       const refreshToken = jwt.sign(
-        {
-          userId: user._id.toHexString(),
-          type: 'refresh',
-        },
+        { userId, type: 'refresh' },
         config.JWT_REFRESH_SECRET,
         { expiresIn: '7d' }
       );
 
+      // Store refresh token
+      refreshTokens.set(refreshToken, { userId, tenantId, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) });
+
       await auditLogRepository.log({
         tenantId: user.tenantId,
         entityType: 'User',
-        entityId: user._id.toHexString(),
-        action: 'LOGIN',
-        actorId: user._id.toHexString(),
+        entityId: userId,
+        action: 'LOGIN' as any,
+        actorId: userId,
         actorEmail: user.email,
         changes: {},
         metadata: {},
         requestId,
       });
 
-      logger.info('User logged in', {
-        userId: user._id.toHexString(),
-        email: user.email,
-        tenantId: user.tenantId,
-        requestId,
-      });
+      logger.info('User logged in', { userId, email: user.email, tenantId, requestId });
 
-      return { accessToken, refreshToken, user, tenant };
+      return {
+        accessToken,
+        refreshToken,
+        user: {
+          _id: user._id,
+          tenantId: user.tenantId,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+          toHexString: () => userId,
+        },
+        tenant: {
+          _id: tenant._id,
+          name: tenant.name,
+          slug: tenant.slug,
+          plan: tenant.plan,
+          toHexString: () => tenantId,
+        },
+      };
     });
   }
 
@@ -243,30 +267,34 @@ export class UserService {
         throw new Error('Invalid token type');
       }
 
-      const user = users.get(decoded.userId);
+      const tokenData = refreshTokens.get(refreshToken);
+      if (!tokenData) {
+        throw new Error('Invalid refresh token');
+      }
+
+      const user = await userRepository.getById(decoded.userId, tokenData.tenantId);
       if (!user || !user.isActive) {
         throw new Error('User not found or inactive');
       }
 
+      const userId = user._id.toHexString();
+      const tenantId = user.tenantId;
+
       const newAccessToken = jwt.sign(
-        {
-          userId: user._id.toHexString(),
-          tenantId: user.tenantId,
-          email: user.email,
-          role: user.role,
-        },
+        { userId, tenantId, email: user.email, role: user.role },
         config.JWT_SECRET,
         { expiresIn: '15m' }
       );
 
       const newRefreshToken = jwt.sign(
-        {
-          userId: user._id.toHexString(),
-          type: 'refresh',
-        },
+        { userId, type: 'refresh' },
         config.JWT_REFRESH_SECRET,
         { expiresIn: '7d' }
       );
+
+      // Remove old refresh token and add new one
+      refreshTokens.delete(refreshToken);
+      refreshTokens.set(newRefreshToken, { userId, tenantId, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) });
 
       return {
         accessToken: newAccessToken,
@@ -275,24 +303,35 @@ export class UserService {
     });
   }
 
-  async getUserById(userId: string, tenantId: string): Promise<User | null> {
-    const user = users.get(userId);
-    if (user && user.tenantId === tenantId) {
-      return user;
-    }
-    return null;
+  async getUserById(userId: string, tenantId: string): Promise<any | null> {
+    const user = await userRepository.getById(userId, tenantId);
+    if (!user) return null;
+    return {
+      ...user,
+      toHexString: () => user._id.toHexString(),
+    };
   }
 
-  async getTenantById(tenantId: string): Promise<Tenant | null> {
-    return tenants.get(tenantId) || null;
+  async getTenantById(tenantId: string): Promise<any | null> {
+    const tenant = await tenantRepository.findByIdGlobally(tenantId);
+    if (!tenant) return null;
+    return {
+      ...tenant,
+      toHexString: () => tenant._id.toHexString(),
+    };
   }
 
-  async getTenantBySlug(slug: string): Promise<Tenant | null> {
-    return Array.from(tenants.values()).find(t => t.slug === slug.toLowerCase()) || null;
+  async getTenantBySlug(slug: string): Promise<any | null> {
+    const tenant = await tenantRepository.findBySlug(slug);
+    if (!tenant) return null;
+    return {
+      ...tenant,
+      toHexString: () => tenant._id.toHexString(),
+    };
   }
 
-  async getUsers(tenantId: string): Promise<User[]> {
-    return Array.from(users.values()).filter(u => u.tenantId === tenantId);
+  async getUsers(tenantId: string): Promise<any[]> {
+    return userRepository.findAllByTenant(tenantId);
   }
 
   async createUser(
@@ -300,21 +339,17 @@ export class UserService {
     createdBy: string,
     data: { email: string; password: string; firstName: string; lastName: string; role: UserRole },
     requestId: string
-  ): Promise<User> {
+  ): Promise<any> {
     return traceServiceOperation('UserService', 'createUser', async () => {
       // Check if user already exists
-      const existingUser = Array.from(users.values()).find(
-        u => u.email === data.email.toLowerCase() && u.tenantId === tenantId
-      );
+      const existingUser = await userRepository.findByEmail(data.email, tenantId);
       if (existingUser) {
         throw new Error('User with this email already exists in this tenant');
       }
 
-      const userId = crypto.randomUUID();
       const passwordHash = await bcrypt.hash(data.password, SALT_ROUNDS);
 
-      const user: User = {
-        _id: { toHexString: () => userId },
+      const user = await userRepository.create({
         tenantId,
         email: data.email.toLowerCase(),
         passwordHash,
@@ -323,17 +358,21 @@ export class UserService {
         role: data.role,
         isActive: true,
         lastLoginAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
+        preferences: {
+          timezone: 'UTC',
+          language: 'en',
+          emailNotifications: true,
+        },
+        deletedAt: null,
+      } as any);
 
-      users.set(userId, user);
+      const userId = user._id.toHexString();
 
       await auditLogRepository.log({
         tenantId,
         entityType: 'User',
         entityId: userId,
-        action: 'CREATE',
+        action: 'CREATE' as any,
         actorId: createdBy,
         actorEmail: '',
         changes: { created: { email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role } },
@@ -343,7 +382,10 @@ export class UserService {
 
       logger.info('User created', { userId, email: user.email, tenantId, createdBy, requestId });
 
-      return user;
+      return {
+        ...user,
+        toHexString: () => userId,
+      };
     });
   }
 
@@ -354,8 +396,8 @@ export class UserService {
     newPassword: string
   ): Promise<void> {
     return traceServiceOperation('UserService', 'changePassword', async () => {
-      const user = users.get(userId);
-      if (!user || user.tenantId !== tenantId) {
+      const user = await userRepository.getById(userId, tenantId);
+      if (!user) {
         throw new Error('User not found');
       }
 
@@ -364,8 +406,8 @@ export class UserService {
         throw new Error('Current password is incorrect');
       }
 
-      user.passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
-      user.updatedAt = new Date();
+      const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+      await userRepository.updatePassword(userId, tenantId, passwordHash);
 
       logger.info('Password changed', { userId, tenantId });
     });
@@ -373,9 +415,7 @@ export class UserService {
 
   async requestPasswordReset(email: string, tenantId: string, resetUrl: string): Promise<void> {
     return traceServiceOperation('UserService', 'requestPasswordReset', async () => {
-      const user = Array.from(users.values()).find(
-        u => u.email === email.toLowerCase() && u.tenantId === tenantId
-      );
+      const user = await userRepository.findByEmail(email, tenantId);
 
       // Always succeed to not reveal if user exists
       if (!user) {
@@ -415,16 +455,14 @@ export class UserService {
         throw new Error('Invalid reset token');
       }
 
-      const user = Array.from(users.values()).find(
-        u => u.email === resetData.email && u.tenantId === tenantId
-      );
+      const user = await userRepository.findByEmail(resetData.email, tenantId);
 
       if (!user) {
         throw new Error('User not found');
       }
 
-      user.passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
-      user.updatedAt = new Date();
+      const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+      await userRepository.updatePassword(user._id.toHexString(), tenantId, passwordHash);
 
       passwordResetTokens.delete(token);
 
@@ -432,12 +470,10 @@ export class UserService {
     });
   }
 
-  async create(data: CreateUserData, createdBy: string): Promise<User> {
+  async create(data: CreateUserData, createdBy: string): Promise<any> {
     return traceServiceOperation('UserService', 'create', async () => {
       // Check if user exists
-      const existing = Array.from(users.values()).find(
-        u => u.email === data.email && u.tenantId === data.tenantId
-      );
+      const existing = await userRepository.findByEmail(data.email, data.tenantId);
 
       if (existing) {
         throw new Error('User with this email already exists');
@@ -445,8 +481,7 @@ export class UserService {
 
       const passwordHash = await bcrypt.hash(data.password, SALT_ROUNDS);
 
-      const user: User = {
-        _id: { toHexString: () => crypto.randomUUID() },
+      const user = await userRepository.create({
         tenantId: data.tenantId,
         email: data.email.toLowerCase(),
         passwordHash,
@@ -455,17 +490,21 @@ export class UserService {
         role: data.role || UserRole.SALES_REP,
         isActive: true,
         lastLoginAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
+        preferences: {
+          timezone: 'UTC',
+          language: 'en',
+          emailNotifications: true,
+        },
+        deletedAt: null,
+      } as any);
 
-      users.set(user._id.toHexString(), user);
+      const userId = user._id.toHexString();
 
       await auditLogRepository.log({
         tenantId: data.tenantId,
         entityType: 'User',
-        entityId: user._id.toHexString(),
-        action: 'CREATE',
+        entityId: userId,
+        action: 'CREATE' as any,
         actorId: createdBy,
         actorEmail: '',
         changes: { created: { email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role } },
@@ -474,51 +513,60 @@ export class UserService {
       });
 
       logger.info('User created', {
-        userId: user._id.toHexString(),
+        userId,
         email: user.email,
         tenantId: data.tenantId,
       });
 
-      return user;
+      return {
+        ...user,
+        toHexString: () => userId,
+      };
     });
   }
 
-  async getById(id: string, tenantId: string): Promise<User | null> {
-    const user = users.get(id);
-    if (user && user.tenantId === tenantId) {
-      return user;
-    }
-    return null;
+  async getById(id: string, tenantId: string): Promise<any | null> {
+    const user = await userRepository.getById(id, tenantId);
+    if (!user) return null;
+    return {
+      ...user,
+      toHexString: () => user._id.toHexString(),
+    };
   }
 
-  async update(id: string, tenantId: string, updates: Partial<User>, updatedBy: string): Promise<User> {
-    const user = users.get(id);
-    if (!user || user.tenantId !== tenantId) {
+  async update(id: string, tenantId: string, updates: Partial<any>, updatedBy: string): Promise<any> {
+    const user = await userRepository.getById(id, tenantId);
+    if (!user) {
       throw new Error('User not found');
     }
 
     const oldData = { email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role };
 
-    if (updates.firstName) user.firstName = updates.firstName;
-    if (updates.lastName) user.lastName = updates.lastName;
-    if (updates.role) user.role = updates.role;
-    user.updatedAt = new Date();
+    const updateData: any = {};
+    if (updates.firstName) updateData.firstName = updates.firstName;
+    if (updates.lastName) updateData.lastName = updates.lastName;
+    if (updates.role) updateData.role = updates.role;
+
+    const updatedUser = await userRepository.updateProfile(id, tenantId, updateData);
 
     await auditLogRepository.log({
       tenantId,
       entityType: 'User',
       entityId: id,
-      action: 'UPDATE',
+      action: 'UPDATE' as any,
       actorId: updatedBy,
       actorEmail: '',
-      changes: { previous: oldData, current: { email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role } },
+      changes: { previous: oldData, current: { email: user.email, firstName: updateData.firstName || user.firstName, lastName: updateData.lastName || user.lastName, role: updateData.role || user.role } },
       metadata: {},
       requestId: '',
     });
 
     logger.info('User updated', { userId: id, tenantId, updatedBy });
 
-    return user;
+    return {
+      ...updatedUser,
+      toHexString: () => id,
+    };
   }
 
   // Create default stages for a new tenant
