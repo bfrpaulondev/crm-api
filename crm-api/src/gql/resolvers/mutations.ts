@@ -5,7 +5,10 @@
 import { builder } from '../schema/builder.js';
 import { leadService } from '@/services/lead.service.js';
 import { webhookService } from '@/services/webhook.service.js';
+import { activityRepository } from '@/repositories/activity.repository.js';
+import { userRepository } from '@/repositories/user.repository.js';
 import { GraphQLContext } from '@/types/context.js';
+import { ActivityType, ActivityStatus, ActivityPriority } from '@/types/entities.js';
 
 // =============================================================================
 // Result Types
@@ -41,6 +44,14 @@ const WebhookResult = builder.simpleObject('WebhookResult', {
     name: t.string({ nullable: false }),
     url: t.string({ nullable: false }),
     isActive: t.boolean({ nullable: false }),
+  }),
+});
+
+const ActivityResult = builder.simpleObject('ActivityResult', {
+  fields: (t) => ({
+    id: t.string({ nullable: false }),
+    subject: t.string({ nullable: false }),
+    status: t.string({ nullable: false }),
   }),
 });
 
@@ -187,6 +198,171 @@ builder.mutationFields((t) => ({
       }
 
       return webhookService.delete(args.id, ctx.tenant.id);
+    },
+  }),
+
+  // Activity Mutations
+  createActivity: t.field({
+    type: ActivityResult,
+    args: {
+      type: t.arg.string({ required: true }),
+      subject: t.arg.string({ required: true }),
+      description: t.arg.string({ required: false }),
+      priority: t.arg.string({ required: false }),
+      dueDate: t.arg.string({ required: false }),
+      relatedToType: t.arg.string({ required: false }),
+      relatedToId: t.arg.string({ required: false }),
+    },
+    resolve: async (_root, args, ctx: GraphQLContext) => {
+      if (!ctx.tenant || !ctx.user) {
+        throw new Error('Authentication required');
+      }
+
+      const activity = await activityRepository.create({
+        tenantId: ctx.tenant.id,
+        type: args.type as ActivityType,
+        subject: args.subject,
+        description: args.description ?? null,
+        ownerId: ctx.user.id,
+        status: ActivityStatus.PENDING,
+        priority: (args.priority as ActivityPriority) ?? ActivityPriority.MEDIUM,
+        dueDate: args.dueDate ? new Date(args.dueDate) : null,
+        relatedToType: (args.relatedToType as 'LEAD' | 'CONTACT' | 'ACCOUNT' | 'OPPORTUNITY') ?? null,
+        relatedToId: args.relatedToId ?? null,
+        completedAt: null,
+        location: null,
+        durationMinutes: null,
+        outcome: null,
+        deletedAt: null,
+      });
+
+      return {
+        id: activity._id.toHexString(),
+        subject: activity.subject,
+        status: activity.status,
+      };
+    },
+  }),
+
+  updateActivity: t.field({
+    type: ActivityResult,
+    args: {
+      id: t.arg.string({ required: true }),
+      subject: t.arg.string({ required: false }),
+      description: t.arg.string({ required: false }),
+      status: t.arg.string({ required: false }),
+      priority: t.arg.string({ required: false }),
+      dueDate: t.arg.string({ required: false }),
+    },
+    resolve: async (_root, args, ctx: GraphQLContext) => {
+      if (!ctx.tenant || !ctx.user) {
+        throw new Error('Authentication required');
+      }
+
+      const updates: Record<string, unknown> = {};
+      if (args.subject) updates.subject = args.subject;
+      if (args.description !== undefined) updates.description = args.description;
+      if (args.status) updates.status = args.status;
+      if (args.priority) updates.priority = args.priority;
+      if (args.dueDate) updates.dueDate = new Date(args.dueDate);
+
+      const activity = await activityRepository.updateById(
+        args.id,
+        ctx.tenant.id,
+        updates,
+        ctx.user.id
+      );
+
+      if (!activity) {
+        throw new Error('Activity not found');
+      }
+
+      return {
+        id: activity._id.toHexString(),
+        subject: activity.subject,
+        status: activity.status,
+      };
+    },
+  }),
+
+  deleteActivity: t.field({
+    type: 'Boolean',
+    args: {
+      id: t.arg.string({ required: true }),
+    },
+    resolve: async (_root, args, ctx: GraphQLContext) => {
+      if (!ctx.tenant || !ctx.user) {
+        throw new Error('Authentication required');
+      }
+
+      return activityRepository.deleteById(args.id, ctx.tenant.id, ctx.user.id);
+    },
+  }),
+
+  completeActivity: t.field({
+    type: ActivityResult,
+    args: {
+      id: t.arg.string({ required: true }),
+    },
+    resolve: async (_root, args, ctx: GraphQLContext) => {
+      if (!ctx.tenant || !ctx.user) {
+        throw new Error('Authentication required');
+      }
+
+      const activity = await activityRepository.complete(
+        args.id,
+        ctx.tenant.id,
+        undefined,
+        ctx.user.id
+      );
+
+      if (!activity) {
+        throw new Error('Activity not found');
+      }
+
+      return {
+        id: activity._id.toHexString(),
+        subject: activity.subject,
+        status: activity.status,
+      };
+    },
+  }),
+
+  // User Mutations
+  updateUser: t.field({
+    type: 'Boolean',
+    args: {
+      id: t.arg.string({ required: true }),
+      role: t.arg.string({ required: false }),
+      firstName: t.arg.string({ required: false }),
+      lastName: t.arg.string({ required: false }),
+    },
+    resolve: async (_root, args, ctx: GraphQLContext) => {
+      if (!ctx.tenant || !ctx.user) {
+        throw new Error('Authentication required');
+      }
+
+      const updates: Record<string, unknown> = {};
+      if (args.role) updates.role = args.role;
+      if (args.firstName) updates.firstName = args.firstName;
+      if (args.lastName) updates.lastName = args.lastName;
+
+      await userRepository.updateById(args.id, ctx.tenant.id, updates, ctx.user.id);
+      return true;
+    },
+  }),
+
+  deleteUser: t.field({
+    type: 'Boolean',
+    args: {
+      id: t.arg.string({ required: true }),
+    },
+    resolve: async (_root, args, ctx: GraphQLContext) => {
+      if (!ctx.tenant || !ctx.user) {
+        throw new Error('Authentication required');
+      }
+
+      return userRepository.deleteById(args.id, ctx.tenant.id, ctx.user.id);
     },
   }),
 }));

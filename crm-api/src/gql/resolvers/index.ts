@@ -9,13 +9,32 @@ import { accountRepository } from '@/repositories/account.repository.js';
 import { contactRepository } from '@/repositories/contact.repository.js';
 import { opportunityRepository } from '@/repositories/opportunity.repository.js';
 import { stageRepository } from '@/repositories/stage.repository.js';
+import { activityRepository } from '@/repositories/activity.repository.js';
+import { userRepository } from '@/repositories/user.repository.js';
 import { Errors } from '@/types/errors.js';
 import { Permission, GraphQLContext } from '@/types/context.js';
-import { Lead, Account, Contact, Opportunity, Stage } from '@/types/entities.js';
+import { Lead, Account, Contact, Opportunity, Stage, Activity, User } from '@/types/entities.js';
 
 // =============================================================================
 // Object Types
 // =============================================================================
+
+const UserType = builder.objectRef<User>('User');
+
+UserType.implement({
+  fields: (t) => ({
+    id: t.field({
+      type: 'String',
+      nullable: false,
+      resolve: (user) => user._id.toHexString(),
+    }),
+    tenantId: t.exposeString('tenantId', { nullable: false }),
+    email: t.exposeString('email', { nullable: false }),
+    firstName: t.exposeString('firstName', { nullable: false }),
+    lastName: t.exposeString('lastName', { nullable: false }),
+    role: t.exposeString('role', { nullable: false }),
+  }),
+});
 
 const LeadType = builder.objectRef<Lead>('Lead');
 
@@ -27,12 +46,21 @@ LeadType.implement({
       resolve: (lead) => lead._id.toHexString(),
     }),
     tenantId: t.exposeString('tenantId', { nullable: false }),
+    ownerId: t.exposeString('ownerId', { nullable: true }),
     firstName: t.exposeString('firstName', { nullable: false }),
     lastName: t.exposeString('lastName', { nullable: false }),
     email: t.exposeString('email', { nullable: false }),
     phone: t.exposeString('phone', { nullable: true }),
     companyName: t.exposeString('companyName', { nullable: true }),
     status: t.exposeString('status', { nullable: false }),
+    owner: t.field({
+      type: UserType,
+      nullable: true,
+      resolve: async (lead, _args, ctx: GraphQLContext) => {
+        if (!lead.ownerId) return null;
+        return userRepository.findById(lead.ownerId, ctx.tenant.id);
+      },
+    }),
     createdAt: t.field({
       type: 'DateTime',
       nullable: false,
@@ -117,6 +145,50 @@ StageType.implement({
     name: t.exposeString('name', { nullable: false }),
     order: t.exposeInt('order', { nullable: false }),
     probability: t.exposeInt('probability', { nullable: false }),
+  }),
+});
+
+const ActivityType = builder.objectRef<Activity>('Activity');
+
+ActivityType.implement({
+  fields: (t) => ({
+    id: t.field({
+      type: 'String',
+      nullable: false,
+      resolve: (activity) => activity._id.toHexString(),
+    }),
+    tenantId: t.exposeString('tenantId', { nullable: false }),
+    type: t.exposeString('type', { nullable: false }),
+    subject: t.exposeString('subject', { nullable: false }),
+    description: t.exposeString('description', { nullable: true }),
+    status: t.exposeString('status', { nullable: false }),
+    priority: t.exposeString('priority', { nullable: false }),
+    ownerId: t.exposeString('ownerId', { nullable: false }),
+    relatedToType: t.exposeString('relatedToType', { nullable: true }),
+    relatedToId: t.exposeString('relatedToId', { nullable: true }),
+    dueDate: t.field({
+      type: 'DateTime',
+      nullable: true,
+      resolve: (activity) => activity.dueDate,
+    }),
+    completedAt: t.field({
+      type: 'DateTime',
+      nullable: true,
+      resolve: (activity) => activity.completedAt,
+    }),
+    lead: t.field({
+      type: LeadType,
+      nullable: true,
+      resolve: async (activity, _args, ctx: GraphQLContext) => {
+        if (activity.relatedToType !== 'LEAD' || !activity.relatedToId) return null;
+        return leadRepository.findById(activity.relatedToId, ctx.tenant.id);
+      },
+    }),
+    createdAt: t.field({
+      type: 'DateTime',
+      nullable: false,
+      resolve: (activity) => activity.createdAt,
+    }),
   }),
 });
 
@@ -226,6 +298,39 @@ builder.queryFields((t) => ({
       return stageRepository.findActiveStages(ctx.tenant.id);
     },
   }),
+
+  activities: t.field({
+    type: [ActivityType],
+    nullable: false,
+    resolve: async (_root, _args, ctx: GraphQLContext) => {
+      ctx.requireAuth();
+      ctx.requireTenant();
+      return activityRepository.findAll(ctx.tenant.id);
+    },
+  }),
+
+  activity: t.field({
+    type: ActivityType,
+    nullable: true,
+    args: {
+      id: t.arg.string({ required: true }),
+    },
+    resolve: async (_root, args, ctx: GraphQLContext) => {
+      ctx.requireAuth();
+      ctx.requireTenant();
+      return activityRepository.findById(args.id, ctx.tenant.id);
+    },
+  }),
+
+  users: t.field({
+    type: [UserType],
+    nullable: false,
+    resolve: async (_root, _args, ctx: GraphQLContext) => {
+      ctx.requireAuth();
+      ctx.requireTenant();
+      return userRepository.findAll(ctx.tenant.id);
+    },
+  }),
 }));
 
-export { LeadType, AccountType, ContactType, OpportunityType, StageType };
+export { LeadType, AccountType, ContactType, OpportunityType, StageType, ActivityType, UserType };
