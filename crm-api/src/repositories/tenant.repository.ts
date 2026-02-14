@@ -16,8 +16,17 @@ export class TenantRepository extends BaseRepository<Tenant> {
 
   async findByIdGlobally(id: string): Promise<Tenant | null> {
     const collection = this.getCollection();
-    const _id = new ObjectId(id);
-    return collection.findOne({ _id, deletedAt: null }) as Promise<Tenant | null>;
+    // Try to find by string ID first (UUID), then by ObjectId
+    let result = await collection.findOne({ _id: id as any, deletedAt: null });
+    if (!result) {
+      try {
+        const _id = new ObjectId(id);
+        result = await collection.findOne({ _id, deletedAt: null });
+      } catch {
+        // Not a valid ObjectId, ignore
+      }
+    }
+    return result as Tenant | null;
   }
 
   async slugExists(slug: string): Promise<boolean> {

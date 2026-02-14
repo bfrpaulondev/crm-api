@@ -71,14 +71,27 @@ export abstract class BaseRepository<T extends BaseEntity> {
    */
   async findById(id: string | ObjectId, tenantId: string): Promise<T | null> {
     return traceRepositoryOperation(this.collectionName, 'findById', async () => {
-      const _id = typeof id === 'string' ? new ObjectId(id) : id;
       const collection = this.getCollection();
 
-      const result = await collection.findOne({
-        _id,
+      // Try to find by string ID first (UUID), then by ObjectId
+      let result = await collection.findOne({
+        _id: id as any,
         tenantId,
         deletedAt: null,
       } as Filter<T>);
+
+      if (!result && typeof id === 'string') {
+        try {
+          const _id = new ObjectId(id);
+          result = await collection.findOne({
+            _id,
+            tenantId,
+            deletedAt: null,
+          } as Filter<T>);
+        } catch {
+          // Not a valid ObjectId, ignore
+        }
+      }
 
       return result as T | null;
     });
@@ -208,22 +221,23 @@ export abstract class BaseRepository<T extends BaseEntity> {
   /**
    * Create a new document
    */
-  async create(data: Omit<T, '_id' | 'createdAt' | 'updatedAt'>): Promise<T> {
+  async create(data: Omit<T, '_id' | 'createdAt' | 'updatedAt'> & { _id?: string | ObjectId }): Promise<T> {
     return traceRepositoryOperation(this.collectionName, 'create', async () => {
       const collection = this.getCollection();
 
       const now = new Date();
       const document = {
         ...data,
-        _id: new ObjectId(),
+        _id: (data as any)._id || new ObjectId(),
         createdAt: now,
         updatedAt: now,
       } as unknown as T;
 
       await collection.insertOne(document as any);
 
+      const id = document._id;
       logger.debug(`Created ${this.collectionName}`, {
-        id: (document as unknown as T)._id.toHexString(),
+        id: typeof id === 'string' ? id : id.toHexString(),
         tenantId: (document as unknown as T).tenantId,
       });
 
@@ -242,7 +256,6 @@ export abstract class BaseRepository<T extends BaseEntity> {
   ): Promise<T | null> {
     return traceRepositoryOperation(this.collectionName, 'updateById', async () => {
       const collection = this.getCollection();
-      const _id = typeof id === 'string' ? new ObjectId(id) : id;
 
       const updateDoc = {
         $set: {
@@ -252,15 +265,30 @@ export abstract class BaseRepository<T extends BaseEntity> {
         },
       };
 
-      const result = await collection.findOneAndUpdate(
-        { _id, tenantId, deletedAt: null } as Filter<T>,
+      // Try with string ID first (UUID)
+      let result = await collection.findOneAndUpdate(
+        { _id: id as any, tenantId, deletedAt: null } as Filter<T>,
         updateDoc as unknown as UpdateFilter<T>,
         { returnDocument: 'after' }
       );
 
+      // If not found and it's a string, try as ObjectId
+      if (!result && typeof id === 'string') {
+        try {
+          const _id = new ObjectId(id);
+          result = await collection.findOneAndUpdate(
+            { _id, tenantId, deletedAt: null } as Filter<T>,
+            updateDoc as unknown as UpdateFilter<T>,
+            { returnDocument: 'after' }
+          );
+        } catch {
+          // Not a valid ObjectId, ignore
+        }
+      }
+
       if (result) {
         logger.debug(`Updated ${this.collectionName}`, {
-          id: _id.toHexString(),
+          id: typeof id === 'string' ? id : id.toHexString(),
           tenantId,
         });
       }
