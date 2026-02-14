@@ -8,9 +8,20 @@ import bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
 import { config } from '@/config/index.js';
 import { auditLogRepository } from '@/repositories/audit-log.repository.js';
+import { stageRepository } from '@/repositories/stage.repository.js';
 import { UserRole } from '@/types/entities.js';
 
 const SALT_ROUNDS = 12;
+
+// Default stages for new tenants
+const DEFAULT_STAGES = [
+  { name: 'Discovery', order: 1, probability: 10, isWonStage: false, isLostStage: false, color: '#3498db', description: 'Initial discovery and research' },
+  { name: 'Qualification', order: 2, probability: 25, isWonStage: false, isLostStage: false, color: '#9b59b6', description: 'Qualifying the lead' },
+  { name: 'Proposal', order: 3, probability: 50, isWonStage: false, isLostStage: false, color: '#f1c40f', description: 'Proposal sent' },
+  { name: 'Negotiation', order: 4, probability: 75, isWonStage: false, isLostStage: false, color: '#e67e22', description: 'Negotiating terms' },
+  { name: 'Closed Won', order: 5, probability: 100, isWonStage: true, isLostStage: false, color: '#27ae60', description: 'Deal closed successfully' },
+  { name: 'Closed Lost', order: 6, probability: 0, isWonStage: false, isLostStage: true, color: '#e74c3c', description: 'Deal lost' },
+];
 
 interface User {
   _id: { toHexString: () => string };
@@ -100,6 +111,9 @@ export class UserService {
         updatedAt: new Date(),
       };
       tenants.set(tenantId, tenant);
+
+      // Create default stages for the new tenant
+      await this.createDefaultStages(tenantId);
 
       // Create admin user
       const userId = crypto.randomUUID();
@@ -505,6 +519,26 @@ export class UserService {
     logger.info('User updated', { userId: id, tenantId, updatedBy });
 
     return user;
+  }
+
+  // Create default stages for a new tenant
+  private async createDefaultStages(tenantId: string): Promise<void> {
+    for (const stage of DEFAULT_STAGES) {
+      await stageRepository.create({
+        tenantId,
+        name: stage.name,
+        order: stage.order,
+        probability: stage.probability,
+        isWonStage: stage.isWonStage,
+        isLostStage: stage.isLostStage,
+        isActive: true,
+        color: stage.color,
+        description: stage.description,
+        deletedAt: null,
+      } as any);
+    }
+
+    logger.info('Default stages created for tenant', { tenantId, count: DEFAULT_STAGES.length });
   }
 }
 
