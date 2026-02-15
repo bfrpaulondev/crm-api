@@ -42,13 +42,26 @@ LeadType.implement({
       nullable: true,
       resolve: async (lead, _args, ctx: GraphQLContext) => {
         if (!lead.ownerId) return null;
-        return userRepository.findById(lead.ownerId, ctx.tenant.id);
+        const user = await userRepository.findById(lead.ownerId, ctx.tenant.id);
+        if (!user) return null;
+        return {
+          id: user._id.toHexString(),
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+        };
       },
     }),
     createdAt: t.field({
       type: 'DateTime',
       nullable: false,
       resolve: (lead) => lead.createdAt,
+    }),
+    updatedAt: t.field({
+      type: 'DateTime',
+      nullable: false,
+      resolve: (lead) => lead.updatedAt,
     }),
   }),
 });
@@ -150,6 +163,37 @@ ActivityType.implement({
     ownerId: t.exposeString('ownerId', { nullable: false }),
     relatedToType: t.exposeString('relatedToType', { nullable: true }),
     relatedToId: t.exposeString('relatedToId', { nullable: true }),
+    leadId: t.field({
+      type: 'String',
+      nullable: true,
+      resolve: (activity) => {
+        if (activity.relatedToType === 'LEAD' && activity.relatedToId) {
+          return activity.relatedToId;
+        }
+        return null;
+      },
+    }),
+    assignedToId: t.field({
+      type: 'String',
+      nullable: true,
+      resolve: (activity) => activity.ownerId,
+    }),
+    assignedTo: t.field({
+      type: UserType,
+      nullable: true,
+      resolve: async (activity, _args, ctx: GraphQLContext) => {
+        if (!activity.ownerId) return null;
+        const user = await userRepository.findById(activity.ownerId, ctx.tenant.id);
+        if (!user) return null;
+        return {
+          id: user._id.toHexString(),
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+        };
+      },
+    }),
     dueDate: t.field({
       type: 'DateTime',
       nullable: true,
@@ -172,6 +216,11 @@ ActivityType.implement({
       type: 'DateTime',
       nullable: false,
       resolve: (activity) => activity.createdAt,
+    }),
+    updatedAt: t.field({
+      type: 'DateTime',
+      nullable: false,
+      resolve: (activity) => activity.updatedAt,
     }),
   }),
 });
