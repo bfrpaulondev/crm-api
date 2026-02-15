@@ -14,27 +14,11 @@ import { userRepository } from '@/repositories/user.repository.js';
 import { Errors } from '@/types/errors.js';
 import { Permission, GraphQLContext } from '@/types/context.js';
 import { Lead, Account, Contact, Opportunity, Stage, Activity, User } from '@/types/entities.js';
+import { UserType } from './auth-resolvers.js';
 
 // =============================================================================
 // Object Types
 // =============================================================================
-
-const UserType = builder.objectRef<User>('User');
-
-UserType.implement({
-  fields: (t) => ({
-    id: t.field({
-      type: 'String',
-      nullable: false,
-      resolve: (user) => user._id.toHexString(),
-    }),
-    tenantId: t.exposeString('tenantId', { nullable: false }),
-    email: t.exposeString('email', { nullable: false }),
-    firstName: t.exposeString('firstName', { nullable: false }),
-    lastName: t.exposeString('lastName', { nullable: false }),
-    role: t.exposeString('role', { nullable: false }),
-  }),
-});
 
 const LeadType = builder.objectRef<Lead>('Lead');
 
@@ -328,9 +312,16 @@ builder.queryFields((t) => ({
     resolve: async (_root, _args, ctx: GraphQLContext) => {
       ctx.requireAuth();
       ctx.requireTenant();
-      return userRepository.findAll(ctx.tenant.id);
+      const users = await userRepository.findAll(ctx.tenant.id);
+      return users.map(user => ({
+        id: user._id.toHexString(),
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+      }));
     },
   }),
 }));
 
-export { LeadType, AccountType, ContactType, OpportunityType, StageType, ActivityType, UserType };
+export { LeadType, AccountType, ContactType, OpportunityType, StageType, ActivityType };
